@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yor_news_app/main.dart';
@@ -38,9 +41,19 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Teknologi');
     await tester.tap(find.text('Simpan'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.textContaining('Teknologi'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('Teknologi'), findsOneWidget);
 
     // Edit category
+    await tester.scrollUntilVisible(
+      find.byTooltip('Edit kategori').last,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byTooltip('Edit kategori').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Tech');
@@ -55,7 +68,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Tech'), findsNothing);
 
-    await tester.tap(find.byTooltip('Hapus kategori').at(2));
+    await tester.scrollUntilVisible(
+      find.textContaining('Sport'),
+      -200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.ancestor(
+          of: find.textContaining('Sport'),
+          matching: find.byType(Row),
+        ),
+        matching: find.byTooltip('Hapus kategori'),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Hapus kategori'));
     await tester.pumpAndSettle();
@@ -80,7 +106,12 @@ void main() {
     await tester.tap(find.byTooltip('Pengaturan'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Tambah situs'));
+    await tester.scrollUntilVisible(
+      find.text('Tambah manual'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Tambah manual'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -205,4 +236,139 @@ void main() {
       await tester.pumpAndSettle();
     }
   });
+
+  testWidgets('Liputan6.com is present and migrated when missing in saved prefs', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const YorNewsApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Liputan6.com'), findsOneWidget);
+
+    // Simulate existing saved sites without Liputan6 and no migration flag yet.
+    final legacySites = defaultSites
+        .where((site) => site.host != 'liputan6.com')
+        .map((site) => site.toJson())
+        .toList();
+    SharedPreferences.setMockInitialValues({
+      'yornews_sites': jsonEncode(legacySites),
+    });
+
+    await tester.pumpWidget(const YorNewsApp(key: ValueKey('migrated')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Liputan6.com'), findsOneWidget);
+  });
+
+  testWidgets('Website catalog picker allows selecting and adding websites', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const YorNewsApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Pilih atau tambah website'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pilih Website'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Tribunnews');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Tribunnews.com'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Simpan Pilihan'));
+    await tester.pumpAndSettle();
+
+    final directoryScrollable = find
+        .descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Tribunnews.com'),
+      300,
+      scrollable: directoryScrollable,
+    );
+    expect(find.text('Tribunnews.com'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Android browser chooser supports Just Once, Always, and resetting default',
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+    (tester) async {
+      final launchedCalls = <(String url, String? pkg)>[];
+      const channel = MethodChannel('yornews/browser');
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'getInstalledBrowsers') {
+              return [
+                {'packageName': 'com.android.chrome', 'label': 'Chrome'},
+                {'packageName': 'com.brave.browser', 'label': 'Brave'},
+              ];
+            }
+            if (call.method == 'openUrlInBrowser') {
+              final args = Map<String, dynamic>.from(call.arguments as Map);
+              launchedCalls.add((
+                args['url'] as String,
+                args['packageName'] as String?,
+              ));
+              return true;
+            }
+            return null;
+          });
+
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+
+      await tester.pumpWidget(const YorNewsApp());
+      await tester.pumpAndSettle();
+
+      // Tap Liputan6.com -> chooser opens, choose Brave + "Sekali saja"
+      await tester.tap(find.text('Liputan6.com'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Buka Liputan6.com'), findsOneWidget);
+      await tester.tap(find.text('Brave'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sekali saja'));
+      await tester.pumpAndSettle();
+
+      expect(launchedCalls.last.$2, 'com.brave.browser');
+
+      // Tap again -> chooser still appears because previous choice was "Sekali saja"
+      await tester.tap(find.text('Liputan6.com'));
+      await tester.pumpAndSettle();
+      expect(find.text('Buka Liputan6.com'), findsOneWidget);
+
+      await tester.tap(find.text('Chrome'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Selalu'));
+      await tester.pumpAndSettle();
+
+      expect(launchedCalls.last.$2, 'com.android.chrome');
+
+      // Tap again -> opens Chrome directly without prompting
+      await tester.tap(find.text('Liputan6.com'));
+      await tester.pumpAndSettle();
+      expect(find.text('Buka Liputan6.com'), findsNothing);
+      expect(launchedCalls.length, 3);
+      expect(launchedCalls.last.$2, 'com.android.chrome');
+
+      // Open Browser HP config and reset back to ask every time
+      await tester.tap(find.byTooltip('Browser HP: Chrome'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tanya setiap buka website'));
+      await tester.pumpAndSettle();
+
+      // Tap Liputan6.com -> prompts again!
+      await tester.tap(find.text('Liputan6.com'));
+      await tester.pumpAndSettle();
+      expect(find.text('Buka Liputan6.com'), findsOneWidget);
+    },
+  );
 }

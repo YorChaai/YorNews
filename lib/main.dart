@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:yor_news_app/widgets/app_scrollbar.dart';
@@ -146,6 +148,13 @@ const defaultSites = <NewsSite>[
     'Indonesia',
     ['Nasional', 'Internasional'],
     'Portal berita umum Indonesia.',
+  ),
+  NewsSite(
+    'Liputan6.com',
+    'https://www.liputan6.com/',
+    'Indonesia',
+    ['Nasional', 'Internasional'],
+    'Portal berita nasional, bisnis, bola, dan peristiwa terkini Indonesia.',
   ),
   NewsSite(
     'CNN Indonesia',
@@ -408,6 +417,678 @@ const defaultSites = <NewsSite>[
   ),
 ];
 
+const recommendedExtraSites = <NewsSite>[
+  NewsSite(
+    'Tribunnews.com',
+    'https://www.tribunnews.com/',
+    'Indonesia',
+    ['Nasional'],
+    'Berita daerah dan nasional Indonesia.',
+  ),
+  NewsSite(
+    'Sindonews.com',
+    'https://www.sindonews.com/',
+    'Indonesia',
+    ['Nasional', 'Internasional'],
+    'Berita nasional, ekonomi, dan internasional.',
+  ),
+  NewsSite(
+    'Republika.co.id',
+    'https://www.republika.co.id/',
+    'Indonesia',
+    ['Nasional', 'Internasional'],
+    'Portal berita nasional dan dunia Islam.',
+  ),
+  NewsSite(
+    'Merdeka.com',
+    'https://www.merdeka.com/',
+    'Indonesia',
+    ['Nasional', 'Internasional'],
+    'Berita politik, peristiwa, dan gaya hidup.',
+  ),
+  NewsSite(
+    'Tirto.id',
+    'https://tirto.id/',
+    'Indonesia',
+    ['Nasional', 'Internasional'],
+    'Jurnalisme data, riset, dan berita mendalam.',
+  ),
+  NewsSite(
+    'CNBC Indonesia',
+    'https://www.cnbcindonesia.com/',
+    'Indonesia',
+    ['Nasional', 'Internasional'],
+    'Berita bisnis, pasar modal, dan ekonomi.',
+  ),
+  NewsSite(
+    'Katadata',
+    'https://katadata.co.id/',
+    'Indonesia',
+    ['Nasional'],
+    'Berita ekonomi, riset, dan analisis data.',
+  ),
+  NewsSite(
+    'Bisnis.com',
+    'https://www.bisnis.com/',
+    'Indonesia',
+    ['Nasional'],
+    'Berita keuangan, industri, dan market.',
+  ),
+  NewsSite(
+    'Suara.com',
+    'https://www.suara.com/',
+    'Indonesia',
+    ['Nasional'],
+    'Berita terkini, bola, dan hiburan Indonesia.',
+  ),
+  NewsSite(
+    'Okezone',
+    'https://www.okezone.com/',
+    'Indonesia',
+    ['Nasional'],
+    'Portal berita nasional, olahraga, dan tekno.',
+  ),
+  NewsSite(
+    'VIVA.co.id',
+    'https://www.viva.co.id/',
+    'Indonesia',
+    ['Nasional'],
+    'Berita politik, bola, dan otomotif.',
+  ),
+  NewsSite(
+    'IDN Times',
+    'https://www.idntimes.com/',
+    'Indonesia',
+    ['Nasional'],
+    'Berita generasi muda dan tren terkini.',
+  ),
+  NewsSite(
+    'BBC Sport',
+    'https://www.bbc.com/sport',
+    'Britania Raya',
+    ['Bola', 'F1'],
+    'Berita dan skor olahraga internasional.',
+  ),
+  NewsSite(
+    'ESPN',
+    'https://www.espn.com/',
+    'Amerika Serikat',
+    ['Bola', 'F1'],
+    'Liputan olahraga dunia dan hasil pertandingan.',
+  ),
+  NewsSite(
+    'CNN International',
+    'https://edition.cnn.com/',
+    'Amerika Serikat',
+    ['Internasional'],
+    'Berita dunia dan liputan internasional.',
+  ),
+  NewsSite(
+    'The Guardian',
+    'https://www.theguardian.com/',
+    'Britania Raya',
+    ['Internasional'],
+    'Berita, opini, dan investigasi global.',
+  ),
+  NewsSite(
+    'IGN',
+    'https://www.ign.com/',
+    'Amerika Serikat',
+    ['Gaming'],
+    'Ulasan game, film, dan berita hiburan.',
+  ),
+  NewsSite(
+    'PC Gamer',
+    'https://www.pcgamer.com/',
+    'Britania Raya',
+    ['Gaming'],
+    'Berita dan review game PC dan hardware.',
+  ),
+  NewsSite(
+    'The Verge',
+    'https://www.theverge.com/',
+    'Amerika Serikat',
+    ['Internasional'],
+    'Berita teknologi, gadget, dan sains.',
+  ),
+  NewsSite(
+    'TechCrunch',
+    'https://techcrunch.com/',
+    'Amerika Serikat',
+    ['Internasional'],
+    'Berita startup, AI, dan industri teknologi.',
+  ),
+];
+
+List<NewsSite> buildAllCatalogSites() {
+  final seenHosts = <String>{};
+  final result = <NewsSite>[];
+  for (final raw in [...defaultSites, ...recommendedExtraSites]) {
+    final host = raw.host.toLowerCase();
+    if (!seenHosts.add(host)) continue;
+    result.add(
+      raw.copyWith(
+        categoryIds: [if (raw.isSport) 'sport', if (raw.isGaming) 'gaming'],
+      ),
+    );
+  }
+  return result;
+}
+
+class BrowserApp {
+  const BrowserApp({
+    required this.packageName,
+    required this.label,
+    this.iconBytes,
+  });
+  final String packageName;
+  final String label;
+  final Uint8List? iconBytes;
+}
+
+class BrowserLauncher {
+  static const _channel = MethodChannel('yornews/browser');
+  static const _prefPackageKey = 'yornews_default_browser_pkg';
+  static const _prefLabelKey = 'yornews_default_browser_label';
+
+  static Future<({String? packageName, String? label})>
+  getSavedBrowser() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (
+      packageName: prefs.getString(_prefPackageKey),
+      label: prefs.getString(_prefLabelKey),
+    );
+  }
+
+  static Future<void> saveBrowser(BrowserApp browser) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefPackageKey, browser.packageName);
+    await prefs.setString(_prefLabelKey, browser.label);
+  }
+
+  static Future<void> clearSavedBrowser() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefPackageKey);
+    await prefs.remove(_prefLabelKey);
+  }
+
+  static Future<List<BrowserApp>> getInstalledBrowsers() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return const [];
+    }
+    try {
+      final raw = await _channel.invokeMethod<List<dynamic>>(
+        'getInstalledBrowsers',
+      );
+      if (raw == null) return const [];
+      return raw
+          .whereType<Map<Object?, Object?>>()
+          .map((entry) {
+            final iconRaw = entry['icon'];
+            return BrowserApp(
+              packageName: entry['packageName'] as String? ?? '',
+              label: entry['label'] as String? ?? '',
+              iconBytes: iconRaw is Uint8List && iconRaw.isNotEmpty
+                  ? iconRaw
+                  : null,
+            );
+          })
+          .where((b) => b.packageName.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<bool> _openInPackage(String url, String packageName) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('openUrlInBrowser', {
+        'url': url,
+        'packageName': packageName,
+      });
+      return ok == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> openSite(
+    BuildContext context,
+    NewsSite site, {
+    VoidCallback? onBrowserPreferenceChanged,
+  }) async {
+    final uri = Uri.tryParse(site.url);
+    if (uri == null) return;
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final browsers = await getInstalledBrowsers();
+      if (browsers.isNotEmpty) {
+        final saved = await getSavedBrowser();
+        if (saved.packageName != null &&
+            browsers.any((b) => b.packageName == saved.packageName)) {
+          final launched = await _openInPackage(site.url, saved.packageName!);
+          if (launched) return;
+          await clearSavedBrowser();
+          onBrowserPreferenceChanged?.call();
+        }
+
+        if (!context.mounted) return;
+        final choice = await showModalBottomSheet<({BrowserApp browser, bool always})>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: const Color(0xFF0D1B2B),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          builder: (_) => _BrowserPickerSheet(
+            title: 'Buka ${site.name}',
+            subtitle: site.host,
+            browsers: browsers,
+            initialPackage: saved.packageName,
+          ),
+        );
+        if (choice == null) return;
+        if (choice.always) {
+          await saveBrowser(choice.browser);
+          onBrowserPreferenceChanged?.call();
+        }
+        final launched = await _openInPackage(
+          site.url,
+          choice.browser.packageName,
+        );
+        if (launched) return;
+      }
+    }
+
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tidak dapat membuka ${site.url}')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal membuka ${site.url}')),
+        );
+      }
+    }
+  }
+
+  static Future<void> configureDefaultBrowser(
+    BuildContext context, {
+    VoidCallback? onBrowserPreferenceChanged,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pemilihan browser HP hanya tersedia di Android.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final browsers = await getInstalledBrowsers();
+    if (!context.mounted) return;
+    if (browsers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak ada aplikasi browser yang terdeteksi di HP.'),
+        ),
+      );
+      return;
+    }
+
+    final saved = await getSavedBrowser();
+    if (!context.mounted) return;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0D1B2B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => _BrowserDefaultConfigSheet(
+        browsers: browsers,
+        savedPackage: saved.packageName,
+      ),
+    );
+    if (action == null) return;
+    if (action == '__ask_every_time__') {
+      await clearSavedBrowser();
+      onBrowserPreferenceChanged?.call();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Akan selalu tanya browser saat buka website.'),
+          ),
+        );
+      }
+      return;
+    }
+    final picked = browsers.where((b) => b.packageName == action).firstOrNull;
+    if (picked != null) {
+      await saveBrowser(picked);
+      onBrowserPreferenceChanged?.call();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Browser utama diatur ke ${picked.label} (Selalu).'),
+          ),
+        );
+      }
+    }
+  }
+}
+
+class _BrowserPickerSheet extends StatefulWidget {
+  const _BrowserPickerSheet({
+    required this.title,
+    required this.subtitle,
+    required this.browsers,
+    this.initialPackage,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<BrowserApp> browsers;
+  final String? initialPackage;
+
+  @override
+  State<_BrowserPickerSheet> createState() => _BrowserPickerSheetState();
+}
+
+class _BrowserPickerSheetState extends State<_BrowserPickerSheet> {
+  late BrowserApp _selected = widget.browsers.firstWhere(
+    (b) => b.packageName == widget.initialPackage,
+    orElse: () => widget.browsers.first,
+  );
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2B435C),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            widget.title,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Pilih Google / browser dari HP (${widget.subtitle})',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF8DA3B8)),
+          ),
+          const SizedBox(height: 14),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 280),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: widget.browsers.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final browser = widget.browsers[index];
+                final selected = browser.packageName == _selected.packageName;
+                return InkWell(
+                  onTap: () => setState(() => _selected = browser),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? const Color(0xFF132E4A)
+                          : const Color(0xFF0A1624),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: selected
+                            ? const Color(0xFF51C8F5)
+                            : const Color(0xFF1B3045),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        if (browser.iconBytes != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.memory(
+                              browser.iconBytes!,
+                              width: 32,
+                              height: 32,
+                              fit: BoxFit.contain,
+                            ),
+                          )
+                        else
+                          const Icon(
+                            Icons.public_rounded,
+                            size: 30,
+                            color: Color(0xFF51C8F5),
+                          ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                browser.label,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Text(
+                                browser.packageName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF7F96AC),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          selected
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded,
+                          color: selected
+                              ? const Color(0xFF51C8F5)
+                              : const Color(0xFF5E748A),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pop((browser: _selected, always: false)),
+                  child: const Text('Sekali saja'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pop((browser: _selected, always: true)),
+                  child: const Text('Selalu'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _BrowserDefaultConfigSheet extends StatelessWidget {
+  const _BrowserDefaultConfigSheet({
+    required this.browsers,
+    this.savedPackage,
+  });
+
+  final List<BrowserApp> browsers;
+  final String? savedPackage;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2B435C),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Pengaturan Browser HP',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'Pilih browser yang selalu dipakai, atau tanya setiap buka website.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF8DA3B8)),
+          ),
+          const SizedBox(height: 14),
+          ListTile(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: savedPackage == null
+                    ? const Color(0xFF51C8F5)
+                    : const Color(0xFF1B3045),
+              ),
+            ),
+            tileColor: savedPackage == null
+                ? const Color(0xFF132E4A)
+                : const Color(0xFF0A1624),
+            leading: const Icon(
+              Icons.help_outline_rounded,
+              color: Color(0xFF51C8F5),
+            ),
+            title: const Text(
+              'Tanya setiap buka website',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            subtitle: const Text(
+              'Tampilkan pilihan "Sekali saja / Selalu"',
+              style: TextStyle(fontSize: 11, color: Color(0xFF8DA3B8)),
+            ),
+            trailing: Icon(
+              savedPackage == null
+                  ? Icons.check_circle_rounded
+                  : Icons.chevron_right_rounded,
+              color: savedPackage == null
+                  ? const Color(0xFF51C8F5)
+                  : const Color(0xFF5E748A),
+            ),
+            onTap: () => Navigator.of(context).pop('__ask_every_time__'),
+          ),
+          const SizedBox(height: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: browsers.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final browser = browsers[index];
+                final isDefault = browser.packageName == savedPackage;
+                return ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(
+                      color: isDefault
+                          ? const Color(0xFF51C8F5)
+                          : const Color(0xFF1B3045),
+                    ),
+                  ),
+                  tileColor: isDefault
+                      ? const Color(0xFF132E4A)
+                      : const Color(0xFF0A1624),
+                  leading: browser.iconBytes != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            browser.iconBytes!,
+                            width: 30,
+                            height: 30,
+                            fit: BoxFit.contain,
+                          ),
+                        )
+                      : const Icon(Icons.public_rounded),
+                  title: Text(
+                    browser.label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Selalu buka dengan ${browser.label}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF8DA3B8),
+                    ),
+                  ),
+                  trailing: isDefault
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          color: Color(0xFF51C8F5),
+                        )
+                      : null,
+                  onTap: () => Navigator.of(context).pop(browser.packageName),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class YorNewsApp extends StatelessWidget {
   const YorNewsApp({super.key});
   @override
@@ -449,11 +1130,20 @@ class _DirectoryPageState extends State<DirectoryPage> {
   String query = '';
   bool searchOpen = false;
   bool _openingSettings = false;
+  bool _openingCatalog = false;
+  String? _savedBrowserLabel;
 
   @override
   void initState() {
     super.initState();
     _restoreSites();
+    _refreshBrowserLabel();
+  }
+
+  Future<void> _refreshBrowserLabel() async {
+    final saved = await BrowserLauncher.getSavedBrowser();
+    if (!mounted) return;
+    setState(() => _savedBrowserLabel = saved.label);
   }
 
   Future<void> _restoreSites() async {
@@ -473,6 +1163,27 @@ class _DirectoryPageState extends State<DirectoryPage> {
                   (item) => NewsCategory.fromJson(item as Map<String, dynamic>),
                 )
                 .toList();
+      final migratedLiputan6 =
+          preferences.getBool('yornews_migrated_liputan6_v1') ?? false;
+      if (!migratedLiputan6) {
+        if (savedSites != null &&
+            !restoredSites.any(
+              (site) => site.host.toLowerCase() == 'liputan6.com',
+            )) {
+          final liputan6 = defaultSites.firstWhere(
+            (site) => site.host.toLowerCase() == 'liputan6.com',
+          );
+          final insertIndex = restoredSites.length < 2
+              ? restoredSites.length
+              : 2;
+          restoredSites.insert(insertIndex, liputan6);
+          await preferences.setString(
+            'yornews_sites',
+            jsonEncode(restoredSites.map((site) => site.toJson()).toList()),
+          );
+        }
+        await preferences.setBool('yornews_migrated_liputan6_v1', true);
+      }
       if (mounted) {
         setState(() {
           _sites = restoredSites;
@@ -510,6 +1221,27 @@ class _DirectoryPageState extends State<DirectoryPage> {
     });
   }
 
+  Future<void> _openWebsiteCatalog() async {
+    if (_openingCatalog) return;
+    _openingCatalog = true;
+    try {
+      final updatedSites = await Navigator.of(context).push<List<NewsSite>>(
+        MaterialPageRoute(
+          builder: (_) => WebsiteCatalogPage(
+            initialSites: List.of(_sites),
+            categories: List.of(_categories),
+          ),
+        ),
+      );
+      if (updatedSites == null || !mounted) return;
+      await _persistAndApply(
+        SettingsResult(updatedSites, List.of(_categories)),
+      );
+    } finally {
+      _openingCatalog = false;
+    }
+  }
+
   Future<void> _openSettings() async {
     if (_openingSettings) return;
     _openingSettings = true;
@@ -523,6 +1255,8 @@ class _DirectoryPageState extends State<DirectoryPage> {
           ),
         ),
       );
+      if (!mounted) return;
+      await _refreshBrowserLabel();
       if (updated == null || !mounted) return;
       await _persistAndApply(updated);
     } finally {
@@ -634,6 +1368,7 @@ class _DirectoryPageState extends State<DirectoryPage> {
                             itemBuilder: (context, index) => SiteCard(
                               site: visibleSites[index],
                               categories: _categories,
+                              onBrowserPreferenceChanged: _refreshBrowserLabel,
                             ),
                           );
                         },
@@ -703,12 +1438,39 @@ class _DirectoryPageState extends State<DirectoryPage> {
             ),
           ),
           IconButton(
+            tooltip: 'Pilih atau tambah website',
+            visualDensity: VisualDensity.compact,
+            onPressed: _openWebsiteCatalog,
+            icon: const Icon(
+              Icons.playlist_add_rounded,
+              color: Color(0xFF51C8F5),
+            ),
+          ),
+          IconButton(
+            tooltip: _savedBrowserLabel == null
+                ? 'Browser HP: Tanya setiap buka'
+                : 'Browser HP: $_savedBrowserLabel',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => BrowserLauncher.configureDefaultBrowser(
+              context,
+              onBrowserPreferenceChanged: _refreshBrowserLabel,
+            ),
+            icon: Icon(
+              Icons.open_in_browser_rounded,
+              color: _savedBrowserLabel == null
+                  ? const Color(0xFFB7C9DA)
+                  : const Color(0xFF51C8F5),
+            ),
+          ),
+          IconButton(
             tooltip: 'Pengaturan',
+            visualDensity: VisualDensity.compact,
             onPressed: _openSettings,
             icon: const Icon(Icons.settings_outlined, color: Color(0xFFB7C9DA)),
           ),
           IconButton(
             tooltip: 'Cari situs',
+            visualDensity: VisualDensity.compact,
             onPressed: () => setState(() => searchOpen = !searchOpen),
             icon: Icon(
               searchOpen ? Icons.close_rounded : Icons.search_rounded,
@@ -813,9 +1575,15 @@ class _DirectoryPageState extends State<DirectoryPage> {
 }
 
 class SiteCard extends StatelessWidget {
-  const SiteCard({super.key, required this.site, required this.categories});
+  const SiteCard({
+    super.key,
+    required this.site,
+    required this.categories,
+    this.onBrowserPreferenceChanged,
+  });
   final NewsSite site;
   final List<NewsCategory> categories;
+  final VoidCallback? onBrowserPreferenceChanged;
   Color get accent =>
       site.isIndonesia ? const Color(0xFF4FC6F2) : const Color(0xFF9B9AFF);
 
@@ -829,27 +1597,11 @@ class SiteCard extends StatelessWidget {
       color: const Color(0xFF0D1B2B),
       borderRadius: BorderRadius.circular(17),
       child: InkWell(
-        onTap: () async {
-          final uri = Uri.tryParse(site.url);
-          if (uri == null) return;
-          try {
-            final launched = await launchUrl(
-              uri,
-              mode: LaunchMode.externalApplication,
-            );
-            if (!launched && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Tidak dapat membuka ${site.url}')),
-              );
-            }
-          } catch (_) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Gagal membuka ${site.url}')),
-              );
-            }
-          }
-        },
+        onTap: () => BrowserLauncher.openSite(
+          context,
+          site,
+          onBrowserPreferenceChanged: onBrowserPreferenceChanged,
+        ),
         borderRadius: BorderRadius.circular(17),
         child: Container(
           padding: const EdgeInsets.all(15),
@@ -979,6 +1731,37 @@ class _SettingsPageState extends State<SettingsPage> {
   late final List<NewsSite> _sites = List.of(widget.initialSites);
   late final List<NewsCategory> _categories = List.of(widget.initialCategories);
   bool _isClosing = false;
+  String? _savedBrowserLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshBrowserLabel();
+  }
+
+  Future<void> _refreshBrowserLabel() async {
+    final saved = await BrowserLauncher.getSavedBrowser();
+    if (!mounted) return;
+    setState(() => _savedBrowserLabel = saved.label);
+  }
+
+  Future<void> _openWebsiteCatalog() async {
+    final updatedSites = await Navigator.of(context).push<List<NewsSite>>(
+      MaterialPageRoute(
+        builder: (_) => WebsiteCatalogPage(
+          initialSites: List.of(_sites),
+          categories: List.of(_categories),
+        ),
+      ),
+    );
+    if (!mounted || updatedSites == null) return;
+    setState(() {
+      _sites
+        ..clear()
+        ..addAll(updatedSites);
+    });
+    _notifyChanged();
+  }
 
   @override
   void dispose() {
@@ -1163,7 +1946,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                               SizedBox(height: 4),
                               Text(
-                                'Atur kategori dan situs berita sesuai pilihanmu.',
+                                'Atur kategori, browser HP, dan daftar website sesuai pilihanmu.',
                                 style: TextStyle(
                                   color: Color(0xFF9BB1C6),
                                   fontSize: 12,
@@ -1171,6 +1954,66 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                             ],
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D1B2B),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF1B3045)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF51C8F5).withValues(alpha: .13),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.open_in_browser_rounded,
+                            color: Color(0xFF51C8F5),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Browser HP saat buka website',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                _savedBrowserLabel == null
+                                    ? 'Tanya setiap buka website (Sekali / Selalu)'
+                                    : 'Selalu pakai: $_savedBrowserLabel',
+                                style: const TextStyle(
+                                  color: Color(0xFF9BB1C6),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonal(
+                          onPressed: () =>
+                              BrowserLauncher.configureDefaultBrowser(
+                                context,
+                                onBrowserPreferenceChanged:
+                                    _refreshBrowserLabel,
+                              ),
+                          child: const Text('Atur'),
                         ),
                       ],
                     ),
@@ -1240,21 +2083,34 @@ class _SettingsPageState extends State<SettingsPage> {
                       );
                     }),
                   const SizedBox(height: 22),
-                  Row(
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 10,
+                    runSpacing: 8,
                     children: [
-                      Expanded(
-                        child: Text(
-                          '${_sites.length} situs',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                          ),
+                      Text(
+                        '${_sites.length} situs',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
                         ),
                       ),
-                      FilledButton.icon(
-                        onPressed: () => _editSite(),
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Tambah situs'),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: _openWebsiteCatalog,
+                            icon: const Icon(Icons.playlist_add_rounded),
+                            label: const Text('Pilih website'),
+                          ),
+                          FilledButton.icon(
+                            onPressed: () => _editSite(),
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Tambah manual'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1596,4 +2452,323 @@ class _SiteEditorPageState extends State<SiteEditorPage> {
       ),
     ),
   );
+}
+
+class WebsiteCatalogPage extends StatefulWidget {
+  const WebsiteCatalogPage({
+    super.key,
+    required this.initialSites,
+    required this.categories,
+  });
+
+  final List<NewsSite> initialSites;
+  final List<NewsCategory> categories;
+
+  @override
+  State<WebsiteCatalogPage> createState() => _WebsiteCatalogPageState();
+}
+
+class _WebsiteCatalogPageState extends State<WebsiteCatalogPage> {
+  final ScrollController _scrollController = ScrollController();
+  late final List<NewsSite> _catalogSites = buildAllCatalogSites();
+  late final Map<String, NewsSite> _existingByKey = {
+    for (final site in widget.initialSites) _siteKey(site): site,
+  };
+  late final Set<String> _selectedKeys = {
+    for (final site in widget.initialSites) _siteKey(site),
+  };
+  late final List<NewsSite> _customSites = [
+    for (final site in widget.initialSites)
+      if (!_catalogKeys.contains(_siteKey(site))) site,
+  ];
+  late final Set<String> _catalogKeys = {
+    for (final site in _catalogSites) _siteKey(site),
+  };
+
+  String _query = '';
+  String _selectedCategory = 'all';
+
+  static String _siteKey(NewsSite site) {
+    final uri = Uri.tryParse(site.url.trim());
+    if (uri == null || uri.host.isEmpty) {
+      return site.url.trim().toLowerCase();
+    }
+    final host = uri.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    final path = uri.path.replaceAll(RegExp(r'/+$'), '');
+    return path.isEmpty ? host : '$host$path';
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  List<NewsSite> get _allDisplaySites => [..._customSites, ..._catalogSites];
+
+  List<NewsSite> get _filteredSites {
+    final needle = _query.trim().toLowerCase();
+    final activeCategory = _selectedCategory == 'all'
+        ? null
+        : widget.categories.where((c) => c.id == _selectedCategory).firstOrNull;
+    return _allDisplaySites.where((site) {
+      if (activeCategory != null &&
+          !siteBelongsToCategory(site, activeCategory)) {
+        return false;
+      }
+      if (needle.isEmpty) return true;
+      return '${site.name} ${site.host} ${site.country} ${site.note}'
+          .toLowerCase()
+          .contains(needle);
+    }).toList();
+  }
+
+  void _toggleSite(NewsSite site) {
+    final key = _siteKey(site);
+    setState(() {
+      if (_selectedKeys.contains(key)) {
+        _selectedKeys.remove(key);
+      } else {
+        _selectedKeys.add(key);
+      }
+    });
+  }
+
+  Future<void> _addCustomWebsite() async {
+    final created = await Navigator.of(context).push<NewsSite>(
+      MaterialPageRoute(
+        builder: (_) =>
+            SiteEditorPage(categories: List.of(widget.categories)),
+      ),
+    );
+    if (!mounted || created == null) return;
+    final key = _siteKey(created);
+    setState(() {
+      final catalogIndex = _catalogSites.indexWhere(
+        (site) => _siteKey(site) == key,
+      );
+      if (catalogIndex >= 0) {
+        _existingByKey[key] = created;
+      } else {
+        final customIndex = _customSites.indexWhere(
+          (site) => _siteKey(site) == key,
+        );
+        if (customIndex >= 0) {
+          _customSites[customIndex] = created;
+        } else {
+          _customSites.insert(0, created);
+        }
+      }
+      _selectedKeys.add(key);
+    });
+  }
+
+  void _saveSelection() {
+    final selected = <NewsSite>[];
+    final seen = <String>{};
+    // Preserve custom/existing site edits while keeping catalog additions cleanly ordered.
+    for (final site in widget.initialSites) {
+      final key = _siteKey(site);
+      if (_selectedKeys.contains(key) && seen.add(key)) {
+        selected.add(_existingByKey[key] ?? site);
+      }
+    }
+    for (final site in [..._customSites, ..._catalogSites]) {
+      final key = _siteKey(site);
+      if (_selectedKeys.contains(key) && seen.add(key)) {
+        selected.add(_existingByKey[key] ?? site);
+      }
+    }
+    Navigator.of(context).pop<List<NewsSite>>(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _filteredSites;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pilih Website'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: TextButton(
+              onPressed: _saveSelection,
+              child: Text('Simpan (${_selectedKeys.length})'),
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 850),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        onChanged: (value) => setState(() => _query = value),
+                        decoration: InputDecoration(
+                          hintText: 'Cari website berita (mis. Liputan6, Kompas)...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          filled: true,
+                          fillColor: const Color(0xFF0D1B2B),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF20344A),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 38,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: widget.categories.length + 1,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (_, index) {
+                            final item = index == 0
+                                ? null
+                                : widget.categories[index - 1];
+                            final id = item?.id ?? 'all';
+                            final label = item?.name ?? 'Semua';
+                            final active = _selectedCategory == id;
+                            return ChoiceChip(
+                              label: Text(label),
+                              selected: active,
+                              showCheckmark: false,
+                              onSelected: (_) =>
+                                  setState(() => _selectedCategory = id),
+                              labelStyle: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: active
+                                    ? const Color(0xFF06121D)
+                                    : const Color(0xFFB2C4D5),
+                              ),
+                              backgroundColor: const Color(0xFF0D1B2B),
+                              selectedColor: const Color(0xFF51C8F5),
+                              side: BorderSide(
+                                color: active
+                                    ? const Color(0xFF51C8F5)
+                                    : const Color(0xFF20344A),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _addCustomWebsite,
+                        icon: const Icon(Icons.add_link_rounded),
+                        label: const Text('Tambah Website Sendiri (URL Manual)'),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: visible.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'Website tidak ditemukan di katalog.',
+                            style: TextStyle(color: Color(0xFF8FA5BA)),
+                          ),
+                        )
+                      : AppScrollbar(
+                          controller: _scrollController,
+                          child: ListView.separated(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                            itemCount: visible.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (_, index) {
+                              final site = visible[index];
+                              final key = _siteKey(site);
+                              final checked = _selectedKeys.contains(key);
+                              final isCustom = !_catalogKeys.contains(key);
+                              return Material(
+                                color: checked
+                                    ? const Color(0xFF10253A)
+                                    : const Color(0xFF0D1B2B),
+                                borderRadius: BorderRadius.circular(14),
+                                child: CheckboxListTile(
+                                  value: checked,
+                                  onChanged: (_) => _toggleSite(site),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    side: BorderSide(
+                                      color: checked
+                                          ? const Color(0xFF51C8F5)
+                                                .withValues(alpha: .5)
+                                          : const Color(0xFF1B3045),
+                                    ),
+                                  ),
+                                  activeColor: const Color(0xFF51C8F5),
+                                  checkColor: const Color(0xFF06121D),
+                                  title: Text(
+                                    isCustom
+                                        ? '${site.name} (Custom)'
+                                        : site.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    '${site.host} · ${site.country} — ${site.note}',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFF9BB1C6),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                ),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0B1522),
+                    border: Border(top: BorderSide(color: Color(0xFF1B3045))),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_selectedKeys.length} website dipilih',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFB2C4D5),
+                          ),
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _saveSelection,
+                        icon: const Icon(Icons.check_rounded),
+                        label: const Text('Simpan Pilihan'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
